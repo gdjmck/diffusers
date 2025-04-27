@@ -1,9 +1,9 @@
 import os
 import glob
 import numpy as np
+import json
 from PIL import Image
 from util.condition import Condition
-from datasets import Dataset
 
 # 描述模板
 caption_template = "A layout plan of residential community, with a total of {} buildings, a floor area ratio of {:.2f}, a building density of {:.1f}%, and an average number of floors of {:.1f}"
@@ -67,6 +67,7 @@ class DataFormer:
             condition_folder: 条件图片文件夹的名称
         """
         # 为方便后续批量操作，把数据存放与字典
+        self.root = root
         self.image_key = image_folder
         self.condition_key = condition_folder
         self.caption_key = 'caption'
@@ -105,7 +106,7 @@ class DataFormer:
 
 
 class BuildingLayoutDataFormer(DataFormer):
-    def __init__(self, root: str, image_folder: str, condition_folder: str, image_mask_folder):
+    def __init__(self, root: str, image_folder: str, condition_folder: str, image_mask_folder, condition_json: str=''):
         """
         root:
             - subfolder1:
@@ -120,6 +121,7 @@ class BuildingLayoutDataFormer(DataFormer):
             image_folder: 图片文件夹的名称
             condition_folder: 条件图片文件夹的名称
             image_mask_folder: 建筑掩码图片的文件夹名称
+            condition_json: 预先计算好的条件字典 {pattern: condition}
         """
         super().__init__(root, image_folder, condition_folder)
         self.image_mask_key = image_mask_folder
@@ -138,12 +140,24 @@ class BuildingLayoutDataFormer(DataFormer):
                 if file.replace(more_key, less_key) not in self.data[less_key]:
                     print(f'no paired data: {file}')
 
+        if os.path.exists(condition_json):
+            with open(condition_json, 'r') as f:
+                self.condition_json = json.loads(f)
+        else:
+            self.condition_json = {}
         self.data[self.caption_key] = self.make_caption()
 
     def make_caption(self):
         caption_list = []
         for file_image, file_mask in zip(self.data[self.image_key], self.data[self.image_mask_key]):
-            caption_list.append(caption_for_file(file_image, file_mask))
+            pattern = file_image.replace(self.root, '')
+            if pattern in self.condition_json:
+                # 从json读取
+                caption = self.condition_json[pattern]
+            else:
+                # 重新计算
+                caption = caption_for_file(file_image, file_mask)
+            caption_list.append(caption)
             # try:
             #     caption_list.append(caption_for_file(file_image, file_mask))
             # except:
