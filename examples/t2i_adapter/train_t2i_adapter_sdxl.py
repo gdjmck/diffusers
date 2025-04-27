@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+#
 
 import argparse
 import functools
@@ -19,6 +20,7 @@ import gc
 import logging
 import math
 import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 import random
 import shutil
 from pathlib import Path
@@ -53,6 +55,7 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+import dataset as dataset_cls
 
 MAX_SEQ_LENGTH = 77
 
@@ -63,7 +66,6 @@ if is_wandb_available():
 check_min_version("0.34.0.dev0")
 
 logger = get_logger(__name__)
-
 
 def image_grid(imgs, rows, cols):
     assert len(imgs) == rows * cols
@@ -632,17 +634,26 @@ def get_train_dataset(args, accelerator):
             cache_dir=args.cache_dir,
         )
     else:
+        data_obj = dataset_cls.BuildingLayoutDataFormer(root=args.train_data_dir,
+                                                       image_folder='建筑',
+                                                       condition_folder='地块',
+                                                       image_mask_folder='建筑_mask') 
+        data_dict = data_obj.split_train_test(0.85)
+        dataset = Dataset.from_dict(data_dict['train'])
+
+        """
         if args.train_data_dir is not None:
             dataset = load_dataset(
                 args.train_data_dir,
                 cache_dir=args.cache_dir,
             )
+        """
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
+    column_names = dataset.column_names
 
     # 6. Get the column names for input/target.
     if args.image_column is None:
@@ -676,7 +687,7 @@ def get_train_dataset(args, accelerator):
             )
 
     with accelerator.main_process_first():
-        train_dataset = dataset["train"].shuffle(seed=args.seed)
+        train_dataset = dataset.shuffle(seed=args.seed)
         if args.max_train_samples is not None:
             train_dataset = train_dataset.select(range(args.max_train_samples))
     return train_dataset

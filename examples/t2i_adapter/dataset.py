@@ -134,8 +134,9 @@ class BuildingLayoutDataFormer(DataFormer):
     def make_caption(self):
         caption_list = []
         for file_image, file_mask in zip(self.data[self.image_key], self.data[self.image_mask_key]):
-            try:
-                caption_list.append(caption_for_file(file_image, file_mask))
-            except:
-                print(file_image)
+            caption_list.append(caption_for_file(file_image, file_mask))
+            # try:
+            #     caption_list.append(caption_for_file(file_image, file_mask))
+            # except:
+            #     print(file_image)
         return caption_list
