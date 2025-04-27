@@ -8,6 +8,7 @@ from datasets import Dataset
 # 描述模板
 caption_template = "A layout plan of residential community, with a total of {} buildings, a floor area ratio of {:.2f}, a building density of {:.1f}%, and an average number of floors of {:.1f}"
 
+
 def full_caption(num_buildings: int, floor_area_ratio: float, density: float, average_floors: float):
     return caption_template.format(int(num_buildings), floor_area_ratio, density * 100, average_floors)
 
@@ -28,16 +29,24 @@ def parse_condition(image_file: str, mask_file: str = ''):
     """通过排布图片+掩码图片精确计算条件"""
     assert os.path.exists(image_file)
 
-    condition_nvdf = condition_parser.cal_condition(image_file, file_type='real')
+    try:
+        condition_nvdf = condition_parser.cal_condition(image_file, file_type='real')
+    except ZeroDivisionError:
+        print(image_file)
+        return [0, 0, 0, 0]
 
     # 若有建筑掩码，计算更精确的建筑数量
     if mask_file and os.path.exists(mask_file):
-        num_building_precise = condition_parser.cal_condition(mask_file)[0]
-        condition_nvdf[0] = num_building_precise
+        try:
+            num_building_precise = condition_parser.cal_condition(mask_file)[0]
+            condition_nvdf[0] = num_building_precise
+        except ZeroDivisionError:
+            print(f'Failed to parse building count from mask file: {mask_file}')
 
     return condition_nvdf
 
-def caption_for_file(image_file: str, mask_file: str=''):
+
+def caption_for_file(image_file: str, mask_file: str = ''):
     condition = parse_condition(image_file, mask_file=mask_file)
     caption = full_caption(*condition)
     return caption
