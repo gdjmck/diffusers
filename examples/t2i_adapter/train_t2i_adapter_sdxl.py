@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 #
-
 import argparse
 import functools
 import gc
@@ -28,6 +27,8 @@ from pathlib import Path
 import accelerate
 import numpy as np
 import torch
+import torch_npu
+from torch_npu.contrib import transfer_to_npu
 import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
@@ -635,6 +636,7 @@ def get_train_dataset(args, accelerator):
         )
     else:
         data_obj = dataset_cls.BuildingLayoutDataFormer(root=args.train_data_dir,
+                                                       condition_json='./condition.json',
                                                        image_folder='建筑',
                                                        condition_folder='地块',
                                                        image_mask_folder='建筑_mask') 
@@ -753,10 +755,10 @@ def prepare_train_dataset(dataset, accelerator):
     )
 
     def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[args.image_column]]
+        images = [Image.open(image).convert("RGB") for image in examples[args.image_column]]
         images = [image_transforms(image) for image in images]
 
-        conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
+        conditioning_images = [Image.open(image).convert("RGB") for image in examples[args.conditioning_image_column]]
         conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
         examples["pixel_values"] = images
@@ -924,8 +926,8 @@ def main(args):
                 # load diffusers style into model
                 load_model = T2IAdapter.from_pretrained(os.path.join(input_dir, "t2iadapter"))
 
-                if args.control_type != "style":
-                    model.register_to_config(**load_model.config)
+                # if args.control_type != "style":
+                #     model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
                 del load_model
@@ -1029,7 +1031,7 @@ def main(args):
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         prompt_batch = batch[args.caption_column]
-
+        
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
             prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
         )
@@ -1076,7 +1078,7 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, batch_size=128, writer_batch_size=128, new_fingerprint=new_fingerprint)
 
     # Then get the training dataset ready to be passed to the dataloader.
     train_dataset = prepare_train_dataset(train_dataset, accelerator)
@@ -1235,6 +1237,8 @@ def main(args):
                 # Denoise the latents
                 denoised_latents = model_pred * (-sigmas) + noisy_latents
                 weighing = sigmas**-2.0
+                if step % 50 == 0:
+                    print('weighing: ', weighing)
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
