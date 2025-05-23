@@ -125,6 +125,7 @@ class BuildingLayoutDataFormer(DataFormer):
         """
         super().__init__(root, image_folder, condition_folder)
         self.image_mask_key = image_mask_folder
+        """
         self.data[self.image_mask_key] = []
         # 加载建筑掩码图片
         for subfolder in self.cities:
@@ -139,14 +140,16 @@ class BuildingLayoutDataFormer(DataFormer):
             for file in self.data[more_key]:
                 if file.replace(more_key, less_key) not in self.data[less_key]:
                     print(f'no paired data: {file}')
+        """
 
         if os.path.exists(condition_json):
             with open(condition_json, 'r') as f:
-                self.condition_json = json.loads(f)
+                self.condition_json = json.load(f)
         else:
             self.condition_json = {}
         self.data[self.caption_key] = self.make_caption()
 
+    """
     def make_caption(self):
         caption_list = []
         for file_image, file_mask in zip(self.data[self.image_key], self.data[self.image_mask_key]):
@@ -163,3 +166,14 @@ class BuildingLayoutDataFormer(DataFormer):
             # except:
             #     print(file_image)
         return caption_list
+    """
+    
+    def make_caption(self):
+        caption_list = []
+        for file_image in self.data[self.image_key]:
+            pattern = file_image.replace(self.root, '')
+            # ▒~Njson读▒~O~V
+            caption = self.condition_json[pattern]
+            caption_list.append(caption)
+        return caption_list
+

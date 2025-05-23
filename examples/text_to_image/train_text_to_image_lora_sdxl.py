@@ -23,6 +23,7 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
+from PIL import Image
 import dataset as dataset_cls
 
 import datasets
@@ -204,7 +205,7 @@ def get_train_dataset(args, accelerator):
                                                         image_mask_folder='建筑_mask',
                                                         condition_json='./condition.json')
         data_dict = data_obj.split_train_test(0.85)
-        dataset = Dataset.from_dict(data_dict['train'])
+        dataset = datasets.Dataset.from_dict(data_dict['train'])
 
         """
         if args.train_data_dir is not None:
@@ -241,16 +242,6 @@ def get_train_dataset(args, accelerator):
                 f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
 
-    if args.conditioning_image_column is None:
-        conditioning_image_column = column_names[2]
-        logger.info(f"conditioning image column defaulting to {conditioning_image_column}")
-    else:
-        conditioning_image_column = args.conditioning_image_column
-        if conditioning_image_column not in column_names:
-            raise ValueError(
-                f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
-            )
-
     with accelerator.main_process_first():
         train_dataset = dataset.shuffle(seed=args.seed)
         if args.max_train_samples is not None:
@@ -268,23 +259,11 @@ def prepare_train_dataset(dataset, accelerator):
         ]
     )
 
-    conditioning_image_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-        ]
-    )
-
     def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[args.image_column]]
+        images = [Image.open(image).convert("RGB") for image in examples[args.image_column]]
         images = [image_transforms(image) for image in images]
 
-        conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
-        conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
-
         examples["pixel_values"] = images
-        examples["conditioning_pixel_values"] = conditioning_images
 
         return examples
 
