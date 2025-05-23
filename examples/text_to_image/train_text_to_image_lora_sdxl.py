@@ -389,6 +389,18 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--crops_coords_top_left_h",
+        type=int,
+        default=0,
+        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
+    )
+    parser.add_argument(
+        "--crops_coords_top_left_w",
+        type=int,
+        default=0,
+        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -973,41 +985,41 @@ def main(args):
         ]
     )
 
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        # image aug
-        original_sizes = []
-        all_images = []
-        crop_top_lefts = []
-        for image in images:
-            original_sizes.append((image.height, image.width))
-            image = train_resize(image)
-            if args.random_flip and random.random() < 0.5:
-                # flip
-                image = train_flip(image)
-            if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
-                image = train_crop(image)
-            else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
-                image = crop(image, y1, x1, h, w)
-            crop_top_left = (y1, x1)
-            crop_top_lefts.append(crop_top_left)
-            image = train_transforms(image)
-            all_images.append(image)
-
-        examples["original_sizes"] = original_sizes
-        examples["crop_top_lefts"] = crop_top_lefts
-        examples["pixel_values"] = all_images
-        tokens_one, tokens_two = tokenize_captions(examples)
-        examples["input_ids_one"] = tokens_one
-        examples["input_ids_two"] = tokens_two
-        if args.debug_loss:
-            fnames = [os.path.basename(image.filename) for image in examples[image_column] if image.filename]
-            if fnames:
-                examples["filenames"] = fnames
-        return examples
+    # def preprocess_train(examples):
+    #     images = [image.convert("RGB") for image in examples[image_column]]
+    #     # image aug
+    #     original_sizes = []
+    #     all_images = []
+    #     crop_top_lefts = []
+    #     for image in images:
+    #         original_sizes.append((image.height, image.width))
+    #         image = train_resize(image)
+    #         if args.random_flip and random.random() < 0.5:
+    #             # flip
+    #             image = train_flip(image)
+    #         if args.center_crop:
+    #             y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+    #             x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+    #             image = train_crop(image)
+    #         else:
+    #             y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+    #             image = crop(image, y1, x1, h, w)
+    #         crop_top_left = (y1, x1)
+    #         crop_top_lefts.append(crop_top_left)
+    #         image = train_transforms(image)
+    #         all_images.append(image)
+    #
+    #     examples["original_sizes"] = original_sizes
+    #     examples["crop_top_lefts"] = crop_top_lefts
+    #     examples["pixel_values"] = all_images
+    #     tokens_one, tokens_two = tokenize_captions(examples)
+    #     examples["input_ids_one"] = tokens_one
+    #     examples["input_ids_two"] = tokens_two
+    #     if args.debug_loss:
+    #         fnames = [os.path.basename(image.filename) for image in examples[image_column] if image.filename]
+    #         if fnames:
+    #             examples["filenames"] = fnames
+    #     return examples
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
@@ -1178,16 +1190,17 @@ def main(args):
                     return add_time_ids
 
                 add_time_ids = torch.cat(
-                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                    [compute_time_ids(s, c) for s, c in zip((args.resolution, args.resolution),
+                                                            (args.crops_coords_top_left_h, args.crops_coords_top_left_w))]
                 )
 
                 # Predict the noise residual
                 unet_added_conditions = {"time_ids": add_time_ids}
                 prompt_embeds, pooled_prompt_embeds = encode_prompt(
                     text_encoders=[text_encoder_one, text_encoder_two],
-                    tokenizers=None,
-                    prompt=None,
-                    text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
+                    tokenizers=[tokenizer_one, tokenizer_two],
+                    prompt=batch[args.caption_column],
+                    text_input_ids_list=None,
                 )
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
                 model_pred = unet(
