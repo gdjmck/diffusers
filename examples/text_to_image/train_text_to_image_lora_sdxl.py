@@ -23,6 +23,7 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
+import dataset as dataset_cls
 
 import datasets
 import numpy as np
